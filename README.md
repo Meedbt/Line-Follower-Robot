@@ -23,5 +23,9 @@ Projet réalisé en 1ère année de BUT GEII, en équipe de 3 étudiants.
 - Style châssis RC, cadre ouvert
 - Imprimé en 3D (PLA), modélisé sur Fusion 360
 
+## 1. Schéma de câblage
+<img width="729" height="669" alt="image" src="https://github.com/user-attachments/assets/add4c46d-6830-4269-b8b5-44654aa5e953" />
+
+
 ---
 *IUT — BUT GEII 1ère année | Rencontres Robotique 2026*
