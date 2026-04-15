@@ -26,6 +26,9 @@ Projet réalisé en 1ère année de BUT GEII, en équipe de 3 étudiants.
 ## 1. Schéma de câblage
 <img width="729" height="669" alt="image" src="https://github.com/user-attachments/assets/add4c46d-6830-4269-b8b5-44654aa5e953" />
 
+<img width="1112" height="684" alt="Capture d’écran 2026-04-15 215151" src="https://github.com/user-attachments/assets/97d7494f-cb66-4d8a-af13-bac1da8fca2a" />
+
+
 
 ---
 *IUT — BUT GEII 1ère année | Rencontres Robotique 2026*
