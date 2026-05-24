@@ -28,7 +28,7 @@ Projet réalisé en 1ère année de BUT GEII, en équipe de 3 étudiants.
 
 <img width="1112" height="684" alt="Capture d’écran 2026-04-15 215151" src="https://github.com/user-attachments/assets/97d7494f-cb66-4d8a-af13-bac1da8fca2a" />
 
-## . Modele 3D 
+## 2. Modele 3D 
 <img width="1140" height="692" alt="image" src="https://github.com/user-attachments/assets/b71a3601-9b0e-4039-b753-f633e1fc2c55" />
 
 ---
