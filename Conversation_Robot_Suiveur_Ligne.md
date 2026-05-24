@@ -1,35 +1,54 @@
-# Conversation - Projet Robot Suiveur de Ligne ESP32
+# Conversation Complete - Robot Suiveur De Ligne ESP32
 
-Ce document reprend toute la conversation de travail autour du robot suiveur de ligne: choix techniques, logique du code, interface web, capteurs, batterie, challenges et etat actuel du fichier `linefollowerV2.ino`.
+Ce document resume toute la conversation et l'evolution du projet de robot suiveur de ligne: materiel, logique de suivi, interface, marqueurs, intersections, ultrason, batterie, challenges, parcours avance et nouvelle interface competition.
 
-## 1. Contexte De Depart
+## 1. Materiel Et Objectif
 
-Le projet concerne un robot suiveur de ligne base sur:
+Le projet principal utilise:
 
 - ESP32
 - QTR-8RC
 - L298N
 - deux moteurs DC
+- capteur ultrason HC-SR04
+- batterie NiMH 7.2V
 - interface web embarquee
-- capteur ultrason pour l'arrivee
-- mesure batterie NiMH 7.2V
 
-Le code de reference initial venait d'un autre robot utilisant:
+Objectif:
+
+- suivre une ligne noire sur fond clair
+- executer des challenges de robotique
+- gerer les marqueurs et intersections
+- detecter l'arrivee/barriere
+- automatiser les missions via une interface simple
+
+## 2. Code De Reference Initial
+
+Le code de reference fourni au debut utilisait:
 
 - `AFMotor.h`
 - `QTRSensors.h`
 - 5 capteurs
-- un controleur de type PD:
+- un controleur PD
+
+Principe du code original:
 
 ```cpp
+position = qtrrc.readLine(sensors);
+error = position - 2000;
+
 motorSpeed = KP * error + KD * (error - lastError);
+lastError = error;
+
+leftMotorSpeed = baseSpeed + motorSpeed;
+rightMotorSpeed = baseSpeed - motorSpeed;
 ```
 
-Ce code n'etait pas directement compatible avec l'ESP32 + L298N, donc une version adaptee a ete creee.
+Il ne pouvait pas etre repris directement car il etait fait pour un shield moteur Adafruit, pas pour un ESP32 avec L298N.
 
-## 2. Pins Et Materiel
+## 3. Pins Actuelles
 
-Pins QTR actuelles, dans l'ordre physique gauche vers droite:
+Pins QTR-8RC, dans l'ordre physique gauche vers droite:
 
 ```cpp
 const uint8_t BROCHES_CAPTEURS[NOMBRE_CAPTEURS] = {
@@ -48,14 +67,51 @@ const uint8_t DROITE_IN1 = 14;
 const uint8_t DROITE_IN2 = 12;
 ```
 
-Les pins `34` et `35` avaient ete identifiees comme incompatibles avec le QTR-8RC, car elles sont entree uniquement sur ESP32. Elles ont donc ete remplacees.
-
-## 3. Logique De Suivi De Ligne
-
-Le robot utilise une logique inspiree du code de reference:
+Pins ultrason:
 
 ```cpp
-position = qtr.readLineBlack(valeursCapteurs);
+const uint8_t ULTRASON_TRIG = 21;
+const uint8_t ULTRASON_ECHO = 13;
+```
+
+Pin batterie:
+
+```cpp
+const uint8_t BATTERIE_ADC = 35;
+```
+
+Notes importantes:
+
+- GPIO34 et GPIO35 ne doivent pas etre utilises pour le QTR-8RC car ils sont entree uniquement.
+- GPIO35 est par contre tres bien pour mesurer la batterie.
+- Si le HC-SR04 est alimente en 5V, il faut un diviseur de tension sur `ECHO`.
+
+## 4. Suivi De Ligne
+
+La version ESP32 utilise:
+
+```cpp
+qtr.readLineBlack(valeursCapteurs);
+```
+
+Donc:
+
+```text
+0    = blanc
+1000 = noir
+```
+
+Position:
+
+```text
+0    = ligne tout a gauche
+3500 = ligne au centre
+7000 = ligne tout a droite
+```
+
+Controle PD:
+
+```cpp
 erreur = position - 3500;
 derivee = erreur - derniereErreur;
 correction = kp * erreur + kd * derivee;
@@ -64,151 +120,241 @@ vitesseGauche = vitesseBase + correction;
 vitesseDroite = vitesseBase - correction;
 ```
 
-Avec 8 capteurs, la position va de:
-
-```text
-0    = ligne completement a gauche
-3500 = ligne centree
-7000 = ligne completement a droite
-```
-
-Les valeurs capteurs calibrees vont environ de:
-
-```text
-0    = blanc
-1000 = noir
-```
-
-Le code actuel suit une ligne noire sur fond clair avec:
+Reglages principaux:
 
 ```cpp
-qtr.readLineBlack(valeursCapteurs);
+int vitesseBase = 135;
+float kp = 0.075;
+float kd = 0.45;
 ```
 
-## 4. Interface Web ESP32
-
-Une interface web a ete ajoutee. L'ESP32 cree son propre reseau Wi-Fi:
+Reglage:
 
 ```text
-Wi-Fi : Robot Z.E.B.I
+Robot trop lent en virage  -> augmenter KP
+Robot zigzague             -> augmenter KD ou baisser KP
+Robot stable mais lent     -> augmenter vitesseBase
+```
+
+## 5. Ancienne Interface Web De Reglage
+
+Une premiere interface web complete avait ete creee.
+
+Elle permettait de regler:
+
+- vitesse base
+- KP
+- KD
+- mode arret marqueur
+- nombre de marqueurs avant stop
+- stop ultrason
+- distance stop ultrason
+- mode intersections
+- sequence intersections
+- parcours avance
+- sequence aller
+- sequence retour
+- demi-tour apres marqueur/intersection
+- pauses parking B/C
+- arret final marqueur/intersection
+
+Elle affichait:
+
+- position
+- erreur
+- vitesses moteurs
+- capteurs QTR
+- marqueurs
+- intersections
+- ultrason
+- batterie
+- phase
+- action
+
+L'option `Correction inversee` a ete supprimee car elle ne servait pas.
+
+## 6. Nouvelle Interface Competition
+
+Une nouvelle interface simplifiee a ete creee pour le jour du challenge.
+
+Elle remplace l'affichage de l'ancienne interface:
+
+```cpp
+serveur.send_P(200, "text/html", PAGE_COMPETITION);
+```
+
+L'ancienne interface `PAGE_WEB` est encore dans le code comme sauvegarde interne, mais elle n'est plus affichee.
+
+Nouvelle interface:
+
+- selection du challenge
+- bouton `CALIBRER`
+- bouton `START CHALLENGE`
+- bouton `URGENCE STOP`
+- challenge actif
+- position ligne
+- ultrason barriere
+- batterie
+- priorite droite
+- marqueurs
+- intersections
+- phase
+- etape/action actuelle
+
+Wi-Fi:
+
+```text
+Nom : Robot Z.E.B.I
 Mot de passe : 12345678
 Adresse : http://192.168.4.1
 ```
 
-L'interface permet de voir ou modifier:
+## 7. Profils De Challenges
 
-- Start / Stop
-- calibration QTR
-- vitesse de base
-- `KP`
-- `KD`
-- mode arret marqueur
-- nombre de marqueurs avant stop
-- stop ultrason
-- distance de stop ultrason
-- mode intersections
-- sequence intersections
-- valeurs des 8 capteurs
-- position de ligne
-- erreur
-- vitesses gauche/droite
-- compteur marqueurs
-- marqueur gauche/droite
-- distance ultrason
-- tension batterie
-- pourcentage batterie
-- compteur intersections
-- decision intersection actuelle
+Les challenges sont maintenant pre-codes dans:
 
-L'option `Correction inversee` a ete supprimee car elle n'etait pas utilisee.
+```cpp
+const ChallengeConfig CHALLENGES[] = { ... };
+```
 
-## 5. Marqueurs Lateraux
+Chaque challenge contient:
 
-Les petits tires noirs sur la piste ont ete interpretes comme des marqueurs lateraux.
+- nom
+- arret marqueur oui/non
+- cible marqueur
+- stop ultrason oui/non
+- distance stop
+- mode intersections oui/non
+- sequence simple
+- parcours avance oui/non
+- sequence aller
+- sequence retour
+- demi-tour apres marqueur
+- demi-tour apres intersection
+- pause B apres marqueur
+- pause C apres marqueur
+- arret final apres marqueur
+- arret final apres intersection
 
-Le robot les detecte avec les capteurs extremes:
+Quand un challenge est selectionne:
+
+```cpp
+appliquerChallenge(numeroChallenge);
+```
+
+Le robot charge automatiquement la configuration correspondante.
+
+## 8. Marqueurs Lateraux
+
+Les petits tires noirs sur les cotes sont traites comme des marqueurs.
+
+Capteurs utilises:
 
 ```text
 valeursCapteurs[0] et [1] = cote gauche
 valeursCapteurs[6] et [7] = cote droit
 ```
 
-Un marqueur est compte seulement si:
+Un marqueur est compte si:
 
 - le centre voit encore la ligne
-- un cote extreme voit beaucoup de noir
-- le mode arret marqueur est actif
-- le robot est en marche
-- le meme marqueur n'a pas deja ete compte
+- un capteur extreme voit du noir
+- ce n'est pas une intersection
+- le robot est actif
+- le marqueur n'a pas deja ete compte
 
-Un filtre a ete ajoute pour ne pas confondre marqueur et intersection:
+Le code evite de compter plusieurs fois le meme marqueur avec:
+
+```cpp
+marqueurDejaCompte
+DELAI_ANTI_DOUBLE_MS
+```
+
+## 9. Difference Entre Marqueur Et Intersection
+
+La difference se fait avec le nombre de capteurs noirs.
+
+Marqueur:
+
+```text
+centre noir + extreme noir + peu de capteurs noirs
+```
+
+Intersection:
+
+```text
+beaucoup de capteurs noirs en meme temps
+```
+
+Seuil:
 
 ```cpp
 const uint8_t NB_CAPTEURS_NOIRS_INTERSECTION = 5;
 ```
 
-Si 5 capteurs ou plus voient du noir, le code considere plutot que c'est une intersection ou une grosse zone noire, pas un petit tire lateral.
+Donc:
 
-## 6. Mode Arret Marqueur
+```text
+moins de 5 capteurs noirs -> possible marqueur
+5 capteurs noirs ou plus  -> intersection, pas marqueur
+```
 
-Le mode arret marqueur sert surtout pour un challenge ou le robot doit s'arreter a un endroit demande.
+## 10. Mode Arret Marqueur
+
+Ce mode sert aux challenges ou le robot doit s'arreter a un endroit demande.
 
 Principe:
 
 ```text
 Mode arret marqueur = Oui
 Marqueurs avant stop = N
-le robot compte les tires
-quand compteur >= N, il s'arrete
+Quand compteurMarqueurs >= N -> stop
 ```
 
-Le compteur se remet a zero au demarrage d'un essai en mode arret marqueur.
+En mode parcours avance, cet arret simple est ignore pour ne pas bloquer les aller-retour:
 
-## 7. Capteur Ultrason Pour L'Arrivee
+```cpp
+if (modeArretMarqueur && !modeParcoursAvance && compteurMarqueurs >= cibleMarqueurs)
+```
 
-Un capteur ultrason a ete ajoute pour detecter les barres d'arrivee.
+## 11. Ultrason Et Barriere
 
-Pins par defaut:
+Le capteur ultrason detecte les barres d'arrivee.
+
+Pins:
 
 ```cpp
 const uint8_t ULTRASON_TRIG = 21;
 const uint8_t ULTRASON_ECHO = 13;
 ```
 
-Important:
-
-```text
-Si le HC-SR04 est alimente en 5V, ECHO sort souvent du 5V.
-L'ESP32 accepte 3.3V maximum.
-Il faut donc un diviseur de tension sur ECHO.
-```
-
-Logique:
+Principe:
 
 ```text
 Stop ultrason = Oui
-Distance mesuree <= Distance stop
+Distance <= distanceStop
 pendant 3 mesures d'affilee
-=> arret du robot
+=> stop
 ```
 
-Pour faire tomber une barriere, il faut mettre:
+Pour faire tomber une barriere:
 
 ```text
 Stop ultrason = Non
 ```
 
-Pour ne pas faire tomber une barriere, il faut mettre:
+Pour eviter la barriere:
 
 ```text
 Stop ultrason = Oui
+Distance stop = environ 10 a 20 cm
 ```
 
-## 8. Batterie NiMH 7.2V
+## 12. Batterie NiMH 7.2V
 
-La batterie utilisee est une NiMH 7.2V.
+La batterie est une NiMH 7.2V.
 
-Tensions approximatives:
+Tensions:
 
 ```text
 pleine  : 8.4V
@@ -216,13 +362,7 @@ nominale: 7.2V
 faible  : 6.0V
 ```
 
-La mesure batterie a ete ajoutee sur:
-
-```cpp
-const uint8_t BATTERIE_ADC = 35;
-```
-
-Montage obligatoire:
+Montage pont diviseur:
 
 ```text
 + batterie
@@ -236,7 +376,7 @@ Montage obligatoire:
 GND batterie / GND ESP32
 ```
 
-Constantes de conversion:
+Constantes:
 
 ```cpp
 const float BAT_R1 = 100000.0;
@@ -246,25 +386,17 @@ const float BAT_TENSION_MIN = 6.0;
 const float BAT_CALIBRATION = 1.00;
 ```
 
-Si la tension affichee ne correspond pas au multimetre, ajuster:
+Si l'affichage ne correspond pas au multimetre, ajuster:
 
 ```cpp
-const float BAT_CALIBRATION = 1.00;
+BAT_CALIBRATION
 ```
 
-## 9. Gestion Des Intersections
+## 13. Gestion Des Intersections
 
-Une premiere version de gestion des intersections a ete ajoutee.
+Le mode intersections permet d'utiliser une sequence de decisions.
 
-Dans l'interface:
-
-```text
-Mode intersections : Oui / Non
-Sequence intersections : S,D,G...
-Reset intersections
-```
-
-Lettres utilisees:
+Lettres:
 
 ```text
 S = tout droit
@@ -272,218 +404,398 @@ G = gauche
 D = droite
 ```
 
+Exemples valides:
+
+```text
+SSG
+S,S,G
+S D G
+```
+
+Le code nettoie automatiquement la sequence et ne garde que `S`, `G`, `D`.
+
 Exemple:
 
 ```text
-S,D,G
+Sequence = SSG
 ```
 
 Signifie:
 
 ```text
-intersection 1 : tout droit
-intersection 2 : droite
-intersection 3 : gauche
+intersection 1 -> tout droit
+intersection 2 -> tout droit
+intersection 3 -> gauche
 ```
 
 Si le robot voit plus d'intersections que la sequence, il repete la derniere decision.
 
-Detection:
+Exemple:
 
 ```text
-intersection = beaucoup de capteurs noirs en meme temps
+S,D
 ```
 
-Execution:
-
-- `S`: avance un court moment tout droit
-- `G`: tourne a gauche jusqu'a retrouver une ligne centree
-- `D`: tourne a droite jusqu'a retrouver une ligne centree
-
-Le robot evite de compter plusieurs fois la meme intersection avec un verrou interne.
-
-## 10. Challenges Analysees
-
-Le PDF `Challenges vendredi matin 2025.pdf` contient 20 challenges.
-
-Le code actuel peut gerer correctement ou partiellement:
-
-### Faisables ou presque faisables maintenant
+Donne:
 
 ```text
-Challenge 1 : Depart 2 -> Arrivee 2, tout droit, faire tomber la premiere barriere
-Challenge 2 : Depart 1 -> Arrivee 1, tout droit, faire tomber la premiere barriere
-Challenge 3 : Depart 1, s'arreter a l'endroit demande
-Challenge 4 : Depart 2, s'arreter a l'endroit demande
+intersection 1 -> S
+intersection 2 -> D
+intersection 3 -> D
+intersection 4 -> D
 ```
 
-Pour les challenges 1 et 2:
+## 14. Parcours Avance
+
+Le mode parcours avance sert pour les missions avec:
+
+- aller
+- demi-tour
+- retour
+- pauses parking
+- arret final
+
+Reglages:
+
+```text
+Parcours avance
+Sequence aller
+Sequence retour
+Demi-tour apres marqueur
+Demi-tour apres intersection
+Pause B apres marqueur
+Pause C apres marqueur
+Arret final marqueur
+Arret final intersection
+```
+
+Valeur `0`:
+
+```text
+desactive la fonction
+```
+
+## 15. Sequence Aller / Retour
+
+Si:
+
+```text
+Parcours avance = Oui
+Sequence aller = SSG
+Sequence retour = vide
+```
+
+Alors la sequence retour est automatiquement nettoyee et devient:
+
+```text
+S
+```
+
+Mais le robot ne passe en phase retour que si un demi-tour est defini:
+
+```text
+Demi-tour apres marqueur > 0
+ou
+Demi-tour apres intersection > 0
+```
+
+Sans demi-tour, le robot reste en phase `Aller`.
+
+## 16. Demi-Tour
+
+Deux facons de declencher le demi-tour:
+
+```text
+Demi-tour apres marqueur
+Demi-tour apres intersection
+```
+
+Exemple:
+
+```text
+Sequence aller = SSG
+Demi-tour apres intersection = 3
+Demi-tour apres marqueur = 0
+```
+
+Le robot:
+
+```text
+intersection 1 -> S
+intersection 2 -> S
+intersection 3 -> G
+puis demi-tour
+passe en phase Retour
+```
+
+Utiliser:
+
+```text
+Demi-tour apres intersection
+```
+
+si le point de demi-tour est lie a un croisement.
+
+Utiliser:
+
+```text
+Demi-tour apres marqueur
+```
+
+si le point de demi-tour est lie a un petit tire lateral.
+
+## 17. Arret Final
+
+Les options:
+
+```text
+Arret final marqueur
+Arret final intersection
+```
+
+servent seulement en phase `Retour`.
+
+Arret final marqueur:
+
+```text
+en phase Retour, arrete-toi apres N marqueurs
+```
+
+Arret final intersection:
+
+```text
+en phase Retour, arrete-toi apres N intersections
+```
+
+Exemple:
+
+```text
+Arret final marqueur = 3
+```
+
+Le robot:
+
+```text
+Aller
+Demi-tour
+Retour
+compte 3 marqueurs
+Stop
+```
+
+Si les deux valent `0`, le robot ne s'arrete pas automatiquement apres le retour.
+
+## 18. Pauses Parking
+
+Pour le challenge 20, des pauses parking ont ete prevues:
+
+```text
+Pause B apres marqueur
+Pause C apres marqueur
+```
+
+Quand le compteur de marqueurs atteint la valeur choisie:
+
+```text
+robot stop 5 secondes
+puis reprend
+```
+
+Duree:
+
+```cpp
+const uint16_t DUREE_PAUSE_PARKING_MS = 5000;
+```
+
+## 19. Challenges Et Capacites
+
+Le PDF des challenges a ete analyse.
+
+### Challenges simples
+
+Faisables avec le suivi simple:
+
+```text
+Challenge 1
+Challenge 2
+```
+
+Reglage:
 
 ```text
 Stop ultrason = Non
 ```
 
-Pour les challenges 3 et 4:
+pour faire tomber la barriere.
+
+### Stop a endroit demande
+
+Faisables avec les marqueurs:
+
+```text
+Challenge 3
+Challenge 4
+```
+
+Reglage:
 
 ```text
 Mode arret marqueur = Oui
-Marqueurs avant stop = nombre a tester
+Marqueurs avant stop = N
 ```
 
-### Partiellement faisables avec la gestion intersections
+### Pistes marquees
+
+Partiellement gerees avec sequences d'intersections:
 
 ```text
-Challenge 8
-Challenge 9
-Challenge 10
-Challenge 11
-Challenge 16
+Challenges 8, 9, 10, 11, 16
 ```
 
-Ces challenges demandent de prendre les pistes marquees. Le mode intersections avec sequence peut aider, mais il faudra tester sur la vraie piste pour regler les decisions.
+Il faut ajuster les sequences sur piste.
 
-### Pas encore geres par le code actuel
+### Aller-retour / demi-tour
 
-Les challenges suivants demandent des fonctions non encore codees:
+Des fonctions ont ete ajoutees pour:
 
 ```text
-Challenge 5  : demi-tour + retour
-Challenge 6  : demi-tour + retour
-Challenge 7  : demi-tour + retour
-Challenge 12 : aller + retour
-Challenge 13 : aller + retour
-Challenge 14 : aller + retour
-Challenge 15 : aller + retour
-Challenge 17 : aller + retour
-Challenge 18 : depart vers depart + demi-tour dans gabarit
-Challenge 19 : depart vers depart + demi-tour dans gabarit
-Challenge 20 : pause 5 secondes parking B et parking C
+Challenges 5, 6, 7, 12, 13, 14, 15, 17, 18, 19
 ```
 
-Il manque encore:
+Mais les valeurs exactes doivent etre testees sur la piste.
 
-- demi-tour programme
-- aller/retour complet
-- detection parking B/C
-- pause 5 secondes
-- eventuellement priorite a droite avec un capteur lateral
+### Challenge 20
 
-## 11. Article 10 - Collision Entre Robots
+Le code contient maintenant les pauses B/C:
 
-Regle:
+```text
+Pause B apres marqueur
+Pause C apres marqueur
+```
+
+Les numeros de marqueurs doivent etre calibres sur piste.
+
+## 20. Priorite A Droite
+
+Le reglement mentionne:
 
 ```text
 priorite a droite
 ```
 
-Le robot actuel ne sait pas encore appliquer cette regle.
+Le robot actuel n'a pas encore de vraie detection laterale droite.
 
-Avec un seul ultrason a l'avant, il peut detecter un obstacle devant, mais pas vraiment un robot venant de droite.
+Avec l'ultrason frontal, il peut detecter un obstacle devant, mais pas vraiment appliquer la priorite a droite.
 
-Pour gerer proprement cette regle, il faudrait:
-
-- soit orienter l'ultrason vers avant-droite
-- soit ajouter un deuxieme capteur a droite
-- soit faire une logique speciale aux intersections
-
-Decision prise:
+Decision:
 
 ```text
 laisser cette partie pour plus tard
 ```
 
-## 12. Etat Actuel Du Code `linefollowerV2.ino`
+## 21. Idee Alternative Arduino Nano
 
-Le code actuel contient:
+Une idee alternative a ete discutee:
 
-- suivi de ligne QTR-8RC
-- controle moteur L298N
-- interface web ESP32
-- reglages `vitesseBase`, `kp`, `kd`
-- calibration capteurs depuis l'interface
-- affichage des 8 capteurs
-- mode arret marqueur
-- filtre anti-intersection pour les marqueurs
-- capteur ultrason arrivee
-- mesure batterie NiMH
-- suppression de correction inverse
-- gestion de sequence intersections
+- Arduino Nano
+- QTR-8RC
+- hacheur moteur
+- boutons
+- ecran OLED
+- pas d'interface web
 
-## 13. Prochaines Evolutions Possibles
+Avantages:
 
-Ordre conseille:
+- plus simple terrain
+- pas de Wi-Fi
+- plus rapide au demarrage
+- plus robuste
 
-1. Tester le suivi simple sur piste.
-2. Tester les marqueurs.
-3. Tester l'ultrason pour l'arrivee.
-4. Tester le mode intersections avec une sequence simple.
-5. Ajouter le demi-tour programme.
-6. Ajouter les modes aller/retour.
-7. Ajouter parking B/C avec pause 5 secondes.
-8. Ajouter gestion priorite a droite si necessaire.
+Inconvenients:
 
-## 14. Notes De Test
+- moins confortable pour regler
+- moins de memoire
+- interface OLED plus limitee
 
-Pour regler le robot:
+Cette piste a ete mise de cote pour revenir au programme ESP32.
 
-```text
-Si le robot sort en virage:
-  augmenter KP ou baisser vitesseBase
+## 22. Etat Actuel Du Fichier
 
-Si le robot zigzague:
-  augmenter KD ou baisser KP
-
-Si le robot est stable mais lent:
-  augmenter vitesseBase petit a petit
-```
-
-Pour tester les intersections:
-
-```text
-Mode intersections = Oui
-Sequence intersections = S
-```
-
-Puis:
-
-```text
-S,D
-S,G
-S,D,G
-```
-
-selon le parcours.
-
-Pour tester l'arrivee:
-
-```text
-Stop ultrason = Oui
-Distance stop = 10 a 20 cm
-```
-
-Pour faire tomber la barriere:
-
-```text
-Stop ultrason = Non
-```
-
-## 15. Fichiers Mentionnes
-
-Fichiers principaux:
+Fichier actuel:
 
 ```text
 C:\Users\mouha\Downloads\linefollowerV2.ino
-C:\Users\mouha\Downloads\Challenges vendredi matin 2025.pdf
 ```
 
-Anciennes versions ou fichiers sources:
+Fonctions presentes:
+
+- suivi ligne QTR
+- controle moteur L298N
+- interface competition
+- profils de 20 challenges
+- calibration
+- start challenge
+- urgence stop
+- marqueurs
+- intersections
+- sequences S/G/D
+- parcours avance
+- phase aller/retour
+- demi-tour
+- pauses parking
+- arret final
+- ultrason barriere
+- batterie
+
+## 23. Points A Tester En Priorite
+
+1. Compiler dans l'IDE Arduino.
+2. Verifier que l'interface competition s'affiche.
+3. Tester challenge 1 avec:
 
 ```text
-C:\Users\mouha\Downloads\Line-Follower-Robot-QTR-8RC.ino
-C:\Users\mouha\OneDrive\Documents\Arduino\linefollower\linefollower.ino
-C:\Users\mouha\OneDrive\Documents\New project\Robot_Suiveur_Ligne_ESP32_QTR8RC.ino
+Stop ultrason = Non dans le profil
 ```
 
-## 16. Remarque Finale
+4. Tester calibration QTR.
+5. Tester position ligne autour de 3500.
+6. Tester marqueurs.
+7. Tester intersections avec une sequence simple.
+8. Tester demi-tour.
+9. Tester ultrason.
+10. Ajuster les profils de challenges.
 
-Le code n'a pas pu etre compile via `arduino-cli` car l'outil n'est pas installe sur la machine. Les modifications ont donc ete verifiees par lecture et recherche de references, mais la validation finale doit se faire dans l'IDE Arduino.
+## 24. Compilation
+
+Impossible de compiler depuis Codex car:
+
+```text
+arduino-cli n'est pas installe
+```
+
+La verification finale doit etre faite dans l'IDE Arduino.
+
+Si une erreur apparait, envoyer le message exact pour correction.
+
+## 25. Notes Importantes
+
+Les profils `CHALLENGES[]` sont une base.
+
+Pour les missions complexes:
+
+- les sequences `S/G/D`
+- les numeros de marqueurs
+- les numeros d'intersections
+- les pauses
+- les arrets finaux
+
+doivent etre ajustes sur la vraie piste.
+
+Le code est maintenant oriente competition:
+
+```text
+selectionner challenge
+calibrer
+start
+urgence stop si besoin
+```
