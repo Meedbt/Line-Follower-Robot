@@ -98,10 +98,9 @@ int distanceStopCm = 15;
 int distanceUltrasonCm = 999;
 float tensionBatterie = 0.0;
 int pourcentageBatterie = 0;
-bool modeVariationVitesse = true;
+bool modeVariationVitesse = false;
 bool repereExtremeActif = false;
 bool repereExtremeDejaCompte = false;
-uint8_t challengeVitesseSelectionne = 21;
 int compteurReperesVitesse = 0;
 int etapeVitesse = 0;
 int vitesseLente = 100;
@@ -109,7 +108,6 @@ int vitesseMoyenne = 135;
 int vitesseRapide = 170;
 String sequenceVitesse = "R,L,R,L,R";
 char codeVitesseActuelle = 'M';
-String nomChallengeVitesse = "Challenge 21";
 String sequenceIntersections = "S";
 String sequenceAller = "S";
 String sequenceRetour = "S";
@@ -141,22 +139,6 @@ const int VITESSE_DEMI_TOUR = 120;
 const uint16_t DUREE_MIN_DEMI_TOUR_MS = 700;
 const uint16_t DUREE_MAX_DEMI_TOUR_MS = 2200;
 const uint16_t DUREE_PAUSE_PARKING_MS = 5000;
-
-struct ChallengeVitesseConfig {
-  const char* nom;
-  const char* sequence;
-  int lente;
-  int moyenne;
-  int rapide;
-  bool stopUltrason;
-};
-
-const ChallengeVitesseConfig CHALLENGES_VITESSE[] = {
-  {"Challenge 21 - D2 vers A2", "R,L,R,L,R", 100, 135, 170, false},
-  {"Challenge 22 - D1 vers A1", "M,L,R,M,R,L,R,L", 100, 135, 170, false}
-};
-
-const uint8_t NOMBRE_CHALLENGES_VITESSE = sizeof(CHALLENGES_VITESSE) / sizeof(CHALLENGES_VITESSE[0]);
 
 const char* NOM_WIFI = "Robot Z.E.B.I";
 const char* MOT_DE_PASSE_WIFI = "12345678";
@@ -755,15 +737,11 @@ const char PAGE_VITESSE[] PROGMEM = R"HTML(
     </header>
 
     <section>
-      <h2>Mission</h2>
-      <select id="challenge" onchange="selectChallenge()">
-        <option value="21">Challenge 21 - D2 vers A2</option>
-        <option value="22">Challenge 22 - D1 vers A1</option>
-      </select>
+      <h2>Mode vitesse manuel</h2>
       <input id="speedSeq" value="R,L,R,L,R" maxlength="39" oninput="updateSequence()" placeholder="Sequence vitesse: R,L,M...">
       <div class="buttons">
         <button class="secondary" onclick="calibrer()">CALIBRER</button>
-        <button onclick="startChallenge()">START</button>
+        <button onclick="startRobot()">START</button>
         <button class="danger" onclick="stopRobot()">STOP</button>
       </div>
     </section>
@@ -771,7 +749,6 @@ const char PAGE_VITESSE[] PROGMEM = R"HTML(
     <section>
       <h2>Telemetrie</h2>
       <div class="grid">
-        <div class="row"><span>Mission active</span><strong id="mission">--</strong></div>
         <div class="row"><span>Position ligne</span><strong id="position">0</strong></div>
         <div class="row"><span>Vitesse actuelle</span><strong id="speed">--</strong></div>
         <div class="row"><span>Etape vitesse</span><strong id="step">0</strong></div>
@@ -786,10 +763,6 @@ const char PAGE_VITESSE[] PROGMEM = R"HTML(
   <script>
     function val(id) { return document.getElementById(id).value; }
 
-    function selectChallenge() {
-      fetch(`/selectSpeedChallenge?i=${val('challenge')}`).then(readState);
-    }
-
     function updateSequence() {
       fetch(`/setSpeedSeq?seq=${encodeURIComponent(val('speedSeq'))}`);
     }
@@ -799,8 +772,8 @@ const char PAGE_VITESSE[] PROGMEM = R"HTML(
       fetch('/calibrate').then(readState);
     }
 
-    function startChallenge() {
-      fetch('/startChallenge').then(readState);
+    function startRobot() {
+      fetch('/startSpeedMode').then(readState);
     }
 
     function stopRobot() {
@@ -820,10 +793,8 @@ const char PAGE_VITESSE[] PROGMEM = R"HTML(
     }
 
     function applyState(data) {
-      challenge.value = data.speedChallenge;
       speedSeq.value = data.speedSeq;
       etat.textContent = data.active ? 'En course' : 'Pret';
-      mission.textContent = data.speedName;
       position.textContent = data.position;
       speed.textContent = `${speedLabel(data.speedCode)} (${data.base})`;
       speed.className = speedClass(data.speedCode);
@@ -841,6 +812,274 @@ const char PAGE_VITESSE[] PROGMEM = R"HTML(
         .catch(() => { etat.textContent = 'Connexion perdue'; });
     }
 
+    readState();
+    setInterval(readState, 250);
+  </script>
+</body>
+</html>
+)HTML";
+
+const char PAGE_MODE_VITESSE[] PROGMEM = R"HTML(
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Robot Z.E.B.I - Mode vitesse</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #10141a;
+      --panel: #171c24;
+      --panel2: #202633;
+      --line: #313a48;
+      --text: #f8fbff;
+      --muted: #aab6c8;
+      --fast: #20c66b;
+      --medium: #f2b84b;
+      --slow: #ff5258;
+      --accent: #20c7aa;
+      --danger: #ff5b61;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--text);
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+    main {
+      width: min(920px, 100%);
+      margin: 0 auto;
+      padding: 22px 14px 34px;
+    }
+    header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 28px;
+    }
+    h1 {
+      margin: 0;
+      font-size: clamp(28px, 6vw, 42px);
+      line-height: 1.05;
+    }
+    .subtitle {
+      color: var(--muted);
+      margin-top: 8px;
+      font-weight: 650;
+    }
+    .pill {
+      border: 1px solid var(--line);
+      background: var(--panel2);
+      color: var(--muted);
+      border-radius: 8px;
+      padding: 10px 13px;
+      white-space: nowrap;
+    }
+    section {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 16px;
+      margin-bottom: 12px;
+    }
+    h2 {
+      margin: 0 0 14px;
+      color: var(--muted);
+      font-size: 16px;
+    }
+    label {
+      display: grid;
+      gap: 8px;
+      margin-bottom: 12px;
+      color: var(--muted);
+      font-size: 14px;
+    }
+    input, button {
+      width: 100%;
+      border-radius: 8px;
+      font: inherit;
+    }
+    input {
+      border: 1px solid var(--line);
+      background: var(--panel2);
+      color: var(--text);
+      padding: 12px;
+    }
+    input[type="text"] { text-transform: uppercase; }
+    input[type="range"] { accent-color: var(--accent); }
+    .buttons {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 10px;
+      margin-top: 12px;
+    }
+    button {
+      border: 0;
+      padding: 14px 12px;
+      font-weight: 800;
+      color: #06120f;
+      background: var(--accent);
+      cursor: pointer;
+    }
+    button.secondary {
+      color: var(--text);
+      border: 1px solid var(--line);
+      background: var(--panel2);
+    }
+    button.danger {
+      color: #180607;
+      background: var(--danger);
+    }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 9px 18px;
+    }
+    .row {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 10px;
+      align-items: baseline;
+    }
+    .row span { color: var(--muted); }
+    .row strong { font-size: 18px; font-variant-numeric: tabular-nums; }
+    .fast { color: var(--fast); }
+    .medium { color: var(--medium); }
+    .slow { color: var(--slow); }
+    @media (max-width: 680px) {
+      header { align-items: flex-start; flex-direction: column; }
+      .buttons, .grid { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <header>
+      <div>
+        <h1>Robot Z.E.B.I</h1>
+        <div class="subtitle">Mode vitesse manuel - Missions 21 & 22</div>
+      </div>
+      <div class="pill" id="etat">Connexion...</div>
+    </header>
+
+    <section>
+      <h2>Reglages vitesse</h2>
+      <label>
+        <div class="row"><span>Mode vitesse</span><strong id="modeOut">Non</strong></div>
+        <input id="speedMode" type="range" min="0" max="1" step="1" value="0" oninput="sendConfig()">
+      </label>
+      <label>
+        <span>Sequence vitesse (R = rapide, M = moyenne, L = lente)</span>
+        <input id="speedSeq" type="text" value="R,L,R,L,R" maxlength="39" oninput="sendConfig()">
+      </label>
+      <div class="grid">
+        <label>
+          <div class="row"><span>Vitesse lente</span><strong id="slowOut">100</strong></div>
+          <input id="slow" type="range" min="60" max="180" step="1" value="100" oninput="sendConfig()">
+        </label>
+        <label>
+          <div class="row"><span>Vitesse moyenne</span><strong id="midOut">135</strong></div>
+          <input id="mid" type="range" min="80" max="210" step="1" value="135" oninput="sendConfig()">
+        </label>
+        <label>
+          <div class="row"><span>Vitesse rapide</span><strong id="fastOut">170</strong></div>
+          <input id="fast" type="range" min="100" max="230" step="1" value="170" oninput="sendConfig()">
+        </label>
+      </div>
+      <div class="buttons">
+        <button class="secondary" onclick="calibrer()">CALIBRER</button>
+        <button onclick="startRobot()">START</button>
+        <button class="danger" onclick="stopRobot()">STOP</button>
+      </div>
+    </section>
+
+    <section>
+      <h2>Telemetrie</h2>
+      <div class="grid">
+        <div class="row"><span>Position ligne</span><strong id="position">0</strong></div>
+        <div class="row"><span>Vitesse actuelle</span><strong id="speed">--</strong></div>
+        <div class="row"><span>Etape vitesse</span><strong id="step">0</strong></div>
+        <div class="row"><span>Reperes extremes</span><strong id="marks">0</strong></div>
+        <div class="row"><span>Repere detecte</span><strong id="markNow">Non</strong></div>
+        <div class="row"><span>Ultrason</span><strong id="ultrason">-- cm</strong></div>
+        <div class="row"><span>Batterie</span><strong id="battery">-- V</strong></div>
+      </div>
+    </section>
+  </main>
+
+  <script>
+    let sendTimer = null;
+    function val(id) { return document.getElementById(id).value; }
+
+    function label(code) {
+      if (code === 'R') return 'Rapide';
+      if (code === 'L') return 'Lente';
+      return 'Moyenne';
+    }
+
+    function cls(code) {
+      if (code === 'R') return 'fast';
+      if (code === 'L') return 'slow';
+      return 'medium';
+    }
+
+    function updateLabels() {
+      modeOut.textContent = val('speedMode') === '1' ? 'Oui' : 'Non';
+      slowOut.textContent = val('slow');
+      midOut.textContent = val('mid');
+      fastOut.textContent = val('fast');
+    }
+
+    function sendConfig() {
+      updateLabels();
+      clearTimeout(sendTimer);
+      sendTimer = setTimeout(() => {
+        fetch(`/setSpeedConfig?mode=${val('speedMode')}&seq=${encodeURIComponent(val('speedSeq'))}&slow=${val('slow')}&mid=${val('mid')}&fast=${val('fast')}`);
+      }, 120);
+    }
+
+    function calibrer() {
+      etat.textContent = 'Calibration...';
+      fetch('/calibrate').then(readState);
+    }
+
+    function startRobot() {
+      fetch('/startSpeedMode').then(readState);
+    }
+
+    function stopRobot() {
+      fetch('/stop').then(readState);
+    }
+
+    function applyState(data) {
+      speedMode.value = data.speedMode ? 1 : 0;
+      speedSeq.value = data.speedSeq;
+      slow.value = data.speedSlow;
+      mid.value = data.speedMedium;
+      fast.value = data.speedFast;
+      updateLabels();
+      etat.textContent = data.active ? 'En course' : 'Pret';
+      position.textContent = data.position;
+      speed.textContent = `${label(data.speedCode)} (${data.base})`;
+      speed.className = cls(data.speedCode);
+      step.textContent = data.speedStep;
+      marks.textContent = data.speedMarks;
+      markNow.textContent = data.speedMarkNow ? 'Oui' : 'Non';
+      ultrason.textContent = data.usDistance > 0 && data.usDistance < 999 ? `${data.usDistance} cm` : '-- cm';
+      battery.textContent = `${Number(data.batteryV).toFixed(2)} V (${data.batteryPct}%)`;
+    }
+
+    function readState() {
+      fetch('/state')
+        .then(r => r.json())
+        .then(applyState)
+        .catch(() => { etat.textContent = 'Connexion perdue'; });
+    }
+
+    updateLabels();
     readState();
     setInterval(readState, 250);
   </script>
@@ -1029,28 +1268,11 @@ void resetVariationVitesse()
   etapeVitesse = 0;
   repereExtremeActif = false;
   repereExtremeDejaCompte = false;
-  appliquerCodeVitesse(vitessePourEtape(0));
-}
-
-void appliquerChallengeVitesse(uint8_t numeroChallenge)
-{
-  if (numeroChallenge != 22) {
-    numeroChallenge = 21;
+  if (modeVariationVitesse) {
+    appliquerCodeVitesse(vitessePourEtape(0));
+  } else {
+    appliquerCodeVitesse('M');
   }
-
-  challengeVitesseSelectionne = numeroChallenge;
-  const ChallengeVitesseConfig& cfg = CHALLENGES_VITESSE[numeroChallenge - 21];
-  nomChallengeVitesse = cfg.nom;
-  sequenceVitesse = nettoyerSequenceVitesse(cfg.sequence);
-  vitesseLente = cfg.lente;
-  vitesseMoyenne = cfg.moyenne;
-  vitesseRapide = cfg.rapide;
-  stopUltrasonActif = cfg.stopUltrason;
-  modeVariationVitesse = true;
-  modeArretMarqueur = false;
-  modeIntersections = false;
-  modeParcoursAvance = false;
-  resetVariationVitesse();
 }
 
 char decisionPourIntersection(int numeroIntersection)
@@ -1418,10 +1640,11 @@ void chargerReglages()
   pauseCApresMarqueur = preferences.getInt("parkC", pauseCApresMarqueur);
   arretFinalApresMarqueur = preferences.getInt("finalM", arretFinalApresMarqueur);
   arretFinalApresIntersection = preferences.getInt("finalI", arretFinalApresIntersection);
-  challengeVitesseSelectionne = (uint8_t)preferences.getUInt("speedCh", challengeVitesseSelectionne);
-  String sequenceSauvee = nettoyerSequenceVitesse(preferences.getString("speedSeq", sequenceVitesse));
-  appliquerChallengeVitesse(challengeVitesseSelectionne);
-  sequenceVitesse = sequenceSauvee;
+  modeVariationVitesse = preferences.getBool("speedMode", modeVariationVitesse);
+  sequenceVitesse = nettoyerSequenceVitesse(preferences.getString("speedSeq", sequenceVitesse));
+  vitesseLente = preferences.getInt("speedSlow", vitesseLente);
+  vitesseMoyenne = preferences.getInt("speedMid", vitesseMoyenne);
+  vitesseRapide = preferences.getInt("speedFast", vitesseRapide);
   resetVariationVitesse();
 }
 
@@ -1445,8 +1668,11 @@ void sauvegarderReglages()
   preferences.putInt("parkC", pauseCApresMarqueur);
   preferences.putInt("finalM", arretFinalApresMarqueur);
   preferences.putInt("finalI", arretFinalApresIntersection);
-  preferences.putUInt("speedCh", challengeVitesseSelectionne);
+  preferences.putBool("speedMode", modeVariationVitesse);
   preferences.putString("speedSeq", sequenceVitesse);
+  preferences.putInt("speedSlow", vitesseLente);
+  preferences.putInt("speedMid", vitesseMoyenne);
+  preferences.putInt("speedFast", vitesseRapide);
 }
 
 void envoyerEtat()
@@ -1454,11 +1680,6 @@ void envoyerEtat()
   String json = "{";
   json += "\"active\":";
   json += robotActif ? "true" : "false";
-  json += ",\"speedChallenge\":";
-  json += challengeVitesseSelectionne;
-  json += ",\"speedName\":\"";
-  json += nomChallengeVitesse;
-  json += "\"";
   json += ",\"speedSeq\":\"";
   json += sequenceVitesse;
   json += "\"";
@@ -1471,6 +1692,14 @@ void envoyerEtat()
   json += compteurReperesVitesse;
   json += ",\"speedMarkNow\":";
   json += repereExtremeActif ? "true" : "false";
+  json += ",\"speedMode\":";
+  json += modeVariationVitesse ? "true" : "false";
+  json += ",\"speedSlow\":";
+  json += vitesseLente;
+  json += ",\"speedMedium\":";
+  json += vitesseMoyenne;
+  json += ",\"speedFast\":";
+  json += vitesseRapide;
   json += ",\"position\":";
   json += dernierePosition;
   json += ",\"error\":";
@@ -1629,31 +1858,35 @@ void configurerInterfaceWeb()
   WiFi.softAP(NOM_WIFI, MOT_DE_PASSE_WIFI);
 
   serveur.on("/", []() {
-    serveur.send_P(200, "text/html", PAGE_VITESSE);
+    serveur.send_P(200, "text/html", PAGE_MODE_VITESSE);
   });
 
   serveur.on("/state", envoyerEtat);
   serveur.on("/set", appliquerReglagesDepuisWeb);
 
-  serveur.on("/selectSpeedChallenge", []() {
-    if (serveur.hasArg("i")) {
-      appliquerChallengeVitesse((uint8_t)serveur.arg("i").toInt());
-      sauvegarderReglages();
+  serveur.on("/setSpeedConfig", []() {
+    if (serveur.hasArg("mode")) {
+      modeVariationVitesse = serveur.arg("mode").toInt() == 1;
     }
-    envoyerEtat();
-  });
-
-  serveur.on("/setSpeedSeq", []() {
     if (serveur.hasArg("seq")) {
       sequenceVitesse = nettoyerSequenceVitesse(serveur.arg("seq"));
-      resetVariationVitesse();
-      sauvegarderReglages();
     }
+    if (serveur.hasArg("slow")) {
+      vitesseLente = constrain(serveur.arg("slow").toInt(), 0, VITESSE_MAX);
+    }
+    if (serveur.hasArg("mid")) {
+      vitesseMoyenne = constrain(serveur.arg("mid").toInt(), 0, VITESSE_MAX);
+    }
+    if (serveur.hasArg("fast")) {
+      vitesseRapide = constrain(serveur.arg("fast").toInt(), 0, VITESSE_MAX);
+    }
+    resetVariationVitesse();
+    sauvegarderReglages();
     serveur.send(200, "text/plain", "OK");
   });
 
-  serveur.on("/startChallenge", []() {
-    appliquerChallengeVitesse(challengeVitesseSelectionne);
+  serveur.on("/startSpeedMode", []() {
+    resetVariationVitesse();
     robotActif = true;
     envoyerEtat();
   });
