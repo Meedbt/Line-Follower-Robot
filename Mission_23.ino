@@ -75,6 +75,7 @@ bool marqueurDejaCompte = false;
 bool marqueurGaucheActif = false;
 bool marqueurDroiteActif = false;
 bool stopUltrasonActif = false;
+bool barriereDetecteeUltrason = false;
 bool modeIntersections = false;
 bool intersectionDetectee = false;
 bool intersectionDejaComptee = false;
@@ -112,12 +113,14 @@ uint32_t debutDemiTourMs = 0;
 uint32_t debutPauseParkingMs = 0;
 uint32_t debutPauseMarqueurMs = 0;
 uint8_t confirmationsUltrason = 0;
+uint8_t confirmationsBarriereTombee = 0;
 
 const uint16_t SEUIL_MARQUEUR = 650;
 const uint16_t SEUIL_CENTRE_LIGNE = 180;
 const uint8_t NB_CAPTEURS_NOIRS_INTERSECTION = 5;
 const uint16_t DELAI_ANTI_DOUBLE_MS = 250;
 const uint8_t CONFIRMATIONS_STOP_ULTRASON = 3;
+const uint8_t CONFIRMATIONS_BARRIERE_TOMBEE = 5;
 const uint16_t PERIODE_ULTRASON_MS = 60;
 const uint16_t PERIODE_BATTERIE_MS = 500;
 const uint16_t SEUIL_INTERSECTION = 650;
@@ -381,11 +384,11 @@ const char PAGE_WEB[] PROGMEM = R"HTML(
           <input id="target" type="range" min="1" max="30" step="1" value="3" oninput="majReglages()">
         </label>
         <label>
-          <div class="row"><span>Stop ultrason</span><output id="usOut">Non</output></div>
+          <div class="row"><span>Arrivee ultrason</span><output id="usOut">Non</output></div>
           <input id="us" type="range" min="0" max="1" step="1" value="0" oninput="majReglages()">
         </label>
         <label>
-          <div class="row"><span>Distance stop</span><output id="usDistOut">15 cm</output></div>
+          <div class="row"><span>Distance detection barriere</span><output id="usDistOut">15 cm</output></div>
           <input id="usDist" type="range" min="5" max="40" step="1" value="15" oninput="majReglages()">
         </label>
         <label>
@@ -450,7 +453,7 @@ const char PAGE_WEB[] PROGMEM = R"HTML(
           <div class="metric">Marqueur droit<strong id="md">Non</strong></div>
           <div class="metric">Pause marqueur<strong id="pauseMarkState">Non</strong></div>
           <div class="metric">Ultrason<strong id="usNow">-- cm</strong></div>
-          <div class="metric">Stop ultrason<strong id="usState">Non</strong></div>
+          <div class="metric">Barriere<strong id="usState">Non</strong></div>
           <div class="metric">Batterie<strong id="batVolt">-- V</strong></div>
           <div class="metric">Charge<strong id="batPct">-- %</strong></div>
           <div class="metric">Intersections<strong id="interCount">0</strong></div>
@@ -576,7 +579,7 @@ const char PAGE_WEB[] PROGMEM = R"HTML(
       md.textContent = data.markRight ? 'Oui' : 'Non';
       pauseMarkState.textContent = data.pauseMarkActive ? 'Oui' : 'Non';
       usNow.textContent = data.usDistance > 0 && data.usDistance < 999 ? `${data.usDistance} cm` : '-- cm';
-      usState.textContent = data.usStop ? 'Oui' : 'Non';
+      usState.textContent = data.usStop ? (data.barrierSeen ? (data.barrierLostCount >= 5 ? 'Tombee' : 'Vue') : 'Attente') : 'Non';
       batVolt.textContent = `${Number(data.batteryV).toFixed(2)} V`;
       batPct.textContent = `${data.batteryPct} %`;
       interCount.textContent = data.interCount;
@@ -600,6 +603,344 @@ const char PAGE_WEB[] PROGMEM = R"HTML(
     majLabels();
     lireEtat();
     setInterval(lireEtat, 250);
+  </script>
+</body>
+</html>
+)HTML";
+
+const char PAGE_MISSION_23[] PROGMEM = R"HTML(
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Mission 23</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #0f1115;
+      --panel: #181b22;
+      --panel-2: #20242d;
+      --text: #f4f7fb;
+      --muted: #9aa4b2;
+      --line: #303642;
+      --accent: #18c29c;
+      --danger: #ff5d5d;
+      --warn: #f2b84b;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      background: var(--bg);
+      color: var(--text);
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+    main {
+      width: min(860px, 100%);
+      margin: 0 auto;
+      padding: 18px;
+    }
+    header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 14px;
+      margin-bottom: 14px;
+    }
+    h1 {
+      margin: 0;
+      font-size: 28px;
+      letter-spacing: 0;
+    }
+    .subtitle {
+      color: var(--muted);
+      margin-top: 4px;
+      font-size: 14px;
+    }
+    .pill {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--panel);
+      padding: 9px 12px;
+      color: var(--muted);
+      white-space: nowrap;
+    }
+    section {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--panel);
+      padding: 15px;
+      margin-bottom: 12px;
+    }
+    h2 {
+      margin: 0 0 12px;
+      font-size: 15px;
+      color: var(--muted);
+    }
+    label {
+      display: block;
+      margin: 12px 0;
+    }
+    .row {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 10px;
+      align-items: baseline;
+    }
+    .row span { color: var(--muted); }
+    output, strong { font-variant-numeric: tabular-nums; }
+    input[type="range"] {
+      width: 100%;
+      accent-color: var(--accent);
+    }
+    .buttons {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 10px;
+      margin-top: 14px;
+    }
+    button {
+      border: 0;
+      border-radius: 8px;
+      padding: 13px 12px;
+      color: #061210;
+      background: var(--accent);
+      font-weight: 800;
+      cursor: pointer;
+    }
+    button.secondary {
+      color: var(--text);
+      background: var(--panel-2);
+      border: 1px solid var(--line);
+    }
+    button.danger {
+      color: #180607;
+      background: var(--danger);
+    }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 10px 18px;
+    }
+    .metric {
+      background: var(--panel-2);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 11px;
+    }
+    .metric span {
+      display: block;
+      color: var(--muted);
+      font-size: 13px;
+      margin-bottom: 5px;
+    }
+    .metric strong {
+      font-size: 22px;
+    }
+    .sensors {
+      display: grid;
+      grid-template-columns: repeat(8, 1fr);
+      gap: 7px;
+      align-items: end;
+      height: 120px;
+      margin-top: 6px;
+    }
+    .sensor {
+      min-width: 0;
+      height: 100%;
+      display: grid;
+      align-content: end;
+      gap: 5px;
+    }
+    .bar {
+      min-height: 4px;
+      border-radius: 6px 6px 2px 2px;
+      background: var(--accent);
+    }
+    .sensor span {
+      color: var(--muted);
+      font-size: 11px;
+      text-align: center;
+      overflow-wrap: anywhere;
+    }
+    @media (max-width: 680px) {
+      header { align-items: flex-start; flex-direction: column; }
+      .buttons, .grid { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <header>
+      <div>
+        <h1>Robot Z.E.B.I</h1>
+        <div class="subtitle">Mission 23 - pause aux marqueurs et arrivee barriere</div>
+      </div>
+      <div class="pill" id="etat">Connexion...</div>
+    </header>
+
+    <section>
+      <h2>Commandes</h2>
+      <div class="buttons">
+        <button id="startStop" onclick="toggleRobot()">START</button>
+        <button class="secondary" onclick="calibrer()">CALIBRER</button>
+        <button class="secondary" onclick="sauver()">SAUVER</button>
+        <button class="danger" onclick="stopRobot()">STOP</button>
+      </div>
+    </section>
+
+    <section>
+      <h2>Reglages mission</h2>
+      <label>
+        <div class="row"><span>Vitesse base</span><output id="baseOut">135</output></div>
+        <input id="base" type="range" min="60" max="230" step="1" value="135" oninput="sendConfig()">
+      </label>
+      <div class="grid">
+        <label>
+          <div class="row"><span>KP</span><output id="kpOut">0.075</output></div>
+          <input id="kp" type="range" min="0" max="0.300" step="0.001" value="0.075" oninput="sendConfig()">
+        </label>
+        <label>
+          <div class="row"><span>KD</span><output id="kdOut">0.450</output></div>
+          <input id="kd" type="range" min="0" max="1.500" step="0.005" value="0.450" oninput="sendConfig()">
+        </label>
+      </div>
+      <div class="grid">
+        <label>
+          <div class="row"><span>Pause a chaque marqueur</span><output id="pauseMarkOut">Oui</output></div>
+          <input id="pauseMark" type="range" min="0" max="1" step="1" value="1" oninput="sendConfig()">
+        </label>
+        <label>
+          <div class="row"><span>Duree pause</span><output id="pauseMarkMsOut">2000 ms</output></div>
+          <input id="pauseMarkMs" type="range" min="500" max="5000" step="100" value="2000" oninput="sendConfig()">
+        </label>
+        <label>
+          <div class="row"><span>Arrivee ultrason</span><output id="usOut">Oui</output></div>
+          <input id="us" type="range" min="0" max="1" step="1" value="1" oninput="sendConfig()">
+        </label>
+        <label>
+          <div class="row"><span>Distance barriere</span><output id="usDistOut">15 cm</output></div>
+          <input id="usDist" type="range" min="5" max="40" step="1" value="15" oninput="sendConfig()">
+        </label>
+      </div>
+    </section>
+
+    <section>
+      <h2>Telemetrie</h2>
+      <div class="grid">
+        <div class="metric"><span>Position</span><strong id="position">3500</strong></div>
+        <div class="metric"><span>Marqueurs</span><strong id="marks">0</strong></div>
+        <div class="metric"><span>Marqueur gauche</span><strong id="mg">Non</strong></div>
+        <div class="metric"><span>Marqueur droit</span><strong id="md">Non</strong></div>
+        <div class="metric"><span>Pause marqueur</span><strong id="pauseMarkState">Non</strong></div>
+        <div class="metric"><span>Barriere</span><strong id="barrier">Non</strong></div>
+        <div class="metric"><span>Ultrason</span><strong id="usNow">-- cm</strong></div>
+        <div class="metric"><span>Batterie</span><strong id="battery">-- V</strong></div>
+      </div>
+      <div class="buttons">
+        <button class="secondary" onclick="resetCompteur()">RESET MARQUEURS</button>
+      </div>
+    </section>
+
+    <section>
+      <h2>Capteurs QTR</h2>
+      <div class="sensors" id="sensors"></div>
+    </section>
+  </main>
+
+  <script>
+    const sensors = document.getElementById('sensors');
+    let sendTimer = null;
+    for (let i = 0; i < 8; i++) {
+      sensors.insertAdjacentHTML('beforeend', `<div class="sensor"><div class="bar" id="b${i}"></div><span id="s${i}">0</span></div>`);
+    }
+
+    function val(id) {
+      return document.getElementById(id).value;
+    }
+
+    function updateLabels() {
+      baseOut.value = val('base');
+      kpOut.value = Number(val('kp')).toFixed(3);
+      kdOut.value = Number(val('kd')).toFixed(3);
+      pauseMarkOut.value = val('pauseMark') === '1' ? 'Oui' : 'Non';
+      pauseMarkMsOut.value = `${val('pauseMarkMs')} ms`;
+      usOut.value = val('us') === '1' ? 'Oui' : 'Non';
+      usDistOut.value = `${val('usDist')} cm`;
+    }
+
+    function sendConfig() {
+      updateLabels();
+      clearTimeout(sendTimer);
+      sendTimer = setTimeout(() => {
+        fetch(`/set?base=${val('base')}&kp=${val('kp')}&kd=${val('kd')}&mode=0&pauseMark=${val('pauseMark')}&pauseMarkMs=${val('pauseMarkMs')}&target=30&us=${val('us')}&usDist=${val('usDist')}&inter=0&adv=0`);
+      }, 120);
+    }
+
+    function toggleRobot() {
+      fetch('/toggle').then(readState);
+    }
+
+    function stopRobot() {
+      fetch('/stop').then(readState);
+    }
+
+    function calibrer() {
+      etat.textContent = 'Calibration...';
+      fetch('/calibrate').then(readState);
+    }
+
+    function sauver() {
+      fetch('/save').then(() => { etat.textContent = 'Reglages sauvegardes'; });
+    }
+
+    function resetCompteur() {
+      fetch('/resetCount').then(readState);
+    }
+
+    function barrierState(data) {
+      if (!data.usStop) return 'Non';
+      if (!data.barrierSeen) return 'Attente';
+      return data.barrierLostCount >= 5 ? 'Tombee' : 'Vue';
+    }
+
+    function applyState(data) {
+      etat.textContent = data.active ? 'Robot actif' : 'Pret';
+      startStop.textContent = data.active ? 'PAUSE' : 'START';
+      startStop.className = data.active ? 'danger' : '';
+      base.value = data.base;
+      kp.value = data.kp;
+      kd.value = data.kd;
+      pauseMark.value = data.pauseMarkMode ? 1 : 0;
+      pauseMarkMs.value = data.pauseMarkMs;
+      us.value = data.usStop ? 1 : 0;
+      usDist.value = data.usLimit;
+      updateLabels();
+      position.textContent = data.position;
+      marks.textContent = data.count;
+      mg.textContent = data.markLeft ? 'Oui' : 'Non';
+      md.textContent = data.markRight ? 'Oui' : 'Non';
+      pauseMarkState.textContent = data.pauseMarkActive ? 'Oui' : 'Non';
+      barrier.textContent = barrierState(data);
+      usNow.textContent = data.usDistance > 0 && data.usDistance < 999 ? `${data.usDistance} cm` : '-- cm';
+      battery.textContent = `${Number(data.batteryV).toFixed(2)} V (${data.batteryPct}%)`;
+      data.sensors.forEach((v, i) => {
+        document.getElementById(`s${i}`).textContent = v;
+        document.getElementById(`b${i}`).style.height = `${Math.max(4, Math.min(100, v / 10))}%`;
+      });
+    }
+
+    function readState() {
+      fetch('/state')
+        .then(r => r.json())
+        .then(applyState)
+        .catch(() => { etat.textContent = 'Connexion perdue'; });
+    }
+
+    updateLabels();
+    readState();
+    setInterval(readState, 250);
   </script>
 </body>
 </html>
@@ -948,12 +1289,10 @@ void detecterMarqueurs()
 
   marqueurGaucheActif = !intersectionDetectee &&
                         centreSurLigne &&
-                        valeursCapteurs[0] > SEUIL_MARQUEUR &&
-                        valeursCapteurs[1] > SEUIL_MARQUEUR;
+                        valeursCapteurs[0] > SEUIL_MARQUEUR;
 
   marqueurDroiteActif = !intersectionDetectee &&
                        centreSurLigne &&
-                       valeursCapteurs[6] > SEUIL_MARQUEUR &&
                        valeursCapteurs[7] > SEUIL_MARQUEUR;
 
   bool marqueurActif = marqueurGaucheActif || marqueurDroiteActif;
@@ -992,6 +1331,13 @@ int mesurerDistanceUltrasonCm()
   return (int)(duree / 58);
 }
 
+void resetBarriereUltrason()
+{
+  barriereDetecteeUltrason = false;
+  confirmationsUltrason = 0;
+  confirmationsBarriereTombee = 0;
+}
+
 void mettreAJourUltrason()
 {
   if (millis() - derniereMesureUltrasonMs < PERIODE_ULTRASON_MS) {
@@ -1004,12 +1350,36 @@ void mettreAJourUltrason()
   bool obstacleProche = distanceUltrasonCm > 0 &&
                         distanceUltrasonCm <= distanceStopCm;
 
-  if (stopUltrasonActif && robotActif && obstacleProche) {
+  if (!stopUltrasonActif) {
+    resetBarriereUltrason();
+    return;
+  }
+  if (!robotActif) {
+    return;
+  }
+
+  if (!barriereDetecteeUltrason && obstacleProche) {
     if (confirmationsUltrason < CONFIRMATIONS_STOP_ULTRASON) {
       confirmationsUltrason++;
     }
-  } else {
+    if (confirmationsUltrason >= CONFIRMATIONS_STOP_ULTRASON) {
+      barriereDetecteeUltrason = true;
+      confirmationsBarriereTombee = 0;
+    }
+    return;
+  }
+
+  if (!barriereDetecteeUltrason) {
     confirmationsUltrason = 0;
+    return;
+  }
+
+  if (obstacleProche) {
+    confirmationsBarriereTombee = 0;
+  } else {
+    if (confirmationsBarriereTombee < CONFIRMATIONS_BARRIERE_TOMBEE) {
+      confirmationsBarriereTombee++;
+    }
   }
 }
 
@@ -1157,6 +1527,10 @@ void envoyerEtat()
   json += distanceStopCm;
   json += ",\"usDistance\":";
   json += distanceUltrasonCm;
+  json += ",\"barrierSeen\":";
+  json += barriereDetecteeUltrason ? "true" : "false";
+  json += ",\"barrierLostCount\":";
+  json += confirmationsBarriereTombee;
   json += ",\"batteryV\":";
   json += String(tensionBatterie, 2);
   json += ",\"batteryPct\":";
@@ -1242,9 +1616,13 @@ void appliquerReglagesDepuisWeb()
   }
   if (serveur.hasArg("us")) {
     stopUltrasonActif = serveur.arg("us").toInt() == 1;
+    if (!stopUltrasonActif) {
+      resetBarriereUltrason();
+    }
   }
   if (serveur.hasArg("usDist")) {
     distanceStopCm = constrain(serveur.arg("usDist").toInt(), 5, 40);
+    resetBarriereUltrason();
   }
   if (serveur.hasArg("inter")) {
     modeIntersections = serveur.arg("inter").toInt() == 1;
@@ -1289,7 +1667,7 @@ void configurerInterfaceWeb()
   WiFi.softAP(NOM_WIFI, MOT_DE_PASSE_WIFI);
 
   serveur.on("/", []() {
-    serveur.send_P(200, "text/html", PAGE_WEB);
+    serveur.send_P(200, "text/html", PAGE_MISSION_23);
   });
 
   serveur.on("/state", envoyerEtat);
@@ -1312,7 +1690,11 @@ void configurerInterfaceWeb()
     if (!etaitActif && robotActif && modeParcoursAvance) {
       resetParcours();
     }
+    if (!etaitActif && robotActif) {
+      resetBarriereUltrason();
+    }
     if (!robotActif) {
+      resetBarriereUltrason();
       arreterMoteurs();
     }
     envoyerEtat();
@@ -1321,6 +1703,7 @@ void configurerInterfaceWeb()
   serveur.on("/stop", []() {
     robotActif = false;
     pauseMarqueurActive = false;
+    resetBarriereUltrason();
     arreterMoteurs();
     envoyerEtat();
   });
@@ -1425,7 +1808,8 @@ void loop()
     return;
   }
 
-  if (stopUltrasonActif && confirmationsUltrason >= CONFIRMATIONS_STOP_ULTRASON) {
+  if (stopUltrasonActif && barriereDetecteeUltrason &&
+      confirmationsBarriereTombee >= CONFIRMATIONS_BARRIERE_TOMBEE) {
     robotActif = false;
     arreterMoteurs();
     return;
