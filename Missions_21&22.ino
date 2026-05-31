@@ -75,6 +75,7 @@ bool marqueurDejaCompte = false;
 bool marqueurGaucheActif = false;
 bool marqueurDroiteActif = false;
 bool stopUltrasonActif = false;
+bool barriereDetecteeUltrason = false;
 bool modeIntersections = false;
 bool intersectionDetectee = false;
 bool intersectionDejaComptee = false;
@@ -119,6 +120,7 @@ uint32_t debutActionIntersectionMs = 0;
 uint32_t debutDemiTourMs = 0;
 uint32_t debutPauseParkingMs = 0;
 uint8_t confirmationsUltrason = 0;
+uint8_t confirmationsBarriereTombee = 0;
 
 const uint16_t SEUIL_MARQUEUR = 650;
 const uint16_t SEUIL_REPERE_EXTREME = 650;
@@ -126,6 +128,7 @@ const uint16_t SEUIL_CENTRE_LIGNE = 180;
 const uint8_t NB_CAPTEURS_NOIRS_INTERSECTION = 5;
 const uint16_t DELAI_ANTI_DOUBLE_MS = 250;
 const uint8_t CONFIRMATIONS_STOP_ULTRASON = 3;
+const uint8_t CONFIRMATIONS_BARRIERE_TOMBEE = 5;
 const uint16_t PERIODE_ULTRASON_MS = 60;
 const uint16_t PERIODE_BATTERIE_MS = 500;
 const uint16_t SEUIL_INTERSECTION = 650;
@@ -988,6 +991,14 @@ const char PAGE_MODE_VITESSE[] PROGMEM = R"HTML(
           <div class="row"><span>Vitesse rapide</span><strong id="fastOut">170</strong></div>
           <input id="fast" type="range" min="100" max="230" step="1" value="170" oninput="sendConfig()">
         </label>
+        <label>
+          <div class="row"><span>Arrivee ultrason</span><strong id="usOut">Non</strong></div>
+          <input id="us" type="range" min="0" max="1" step="1" value="0" oninput="sendConfig()">
+        </label>
+        <label>
+          <div class="row"><span>Distance detection barriere</span><strong id="usDistOut">15 cm</strong></div>
+          <input id="usDist" type="range" min="5" max="40" step="1" value="15" oninput="sendConfig()">
+        </label>
       </div>
       <div class="buttons">
         <button class="secondary" onclick="calibrer()">CALIBRER</button>
@@ -1005,6 +1016,7 @@ const char PAGE_MODE_VITESSE[] PROGMEM = R"HTML(
         <div class="row"><span>Reperes extremes</span><strong id="marks">0</strong></div>
         <div class="row"><span>Repere detecte</span><strong id="markNow">Non</strong></div>
         <div class="row"><span>Ultrason</span><strong id="ultrason">-- cm</strong></div>
+        <div class="row"><span>Barriere</span><strong id="barrier">Non</strong></div>
         <div class="row"><span>Batterie</span><strong id="battery">-- V</strong></div>
       </div>
     </section>
@@ -1031,13 +1043,15 @@ const char PAGE_MODE_VITESSE[] PROGMEM = R"HTML(
       slowOut.textContent = val('slow');
       midOut.textContent = val('mid');
       fastOut.textContent = val('fast');
+      usOut.textContent = val('us') === '1' ? 'Oui' : 'Non';
+      usDistOut.textContent = `${val('usDist')} cm`;
     }
 
     function sendConfig() {
       updateLabels();
       clearTimeout(sendTimer);
       sendTimer = setTimeout(() => {
-        fetch(`/setSpeedConfig?mode=${val('speedMode')}&seq=${encodeURIComponent(val('speedSeq'))}&slow=${val('slow')}&mid=${val('mid')}&fast=${val('fast')}`);
+        fetch(`/setSpeedConfig?mode=${val('speedMode')}&seq=${encodeURIComponent(val('speedSeq'))}&slow=${val('slow')}&mid=${val('mid')}&fast=${val('fast')}&us=${val('us')}&usDist=${val('usDist')}`);
       }, 120);
     }
 
@@ -1060,6 +1074,8 @@ const char PAGE_MODE_VITESSE[] PROGMEM = R"HTML(
       slow.value = data.speedSlow;
       mid.value = data.speedMedium;
       fast.value = data.speedFast;
+      us.value = data.usStop ? 1 : 0;
+      usDist.value = data.usLimit;
       updateLabels();
       etat.textContent = data.active ? 'En course' : 'Pret';
       position.textContent = data.position;
@@ -1069,6 +1085,7 @@ const char PAGE_MODE_VITESSE[] PROGMEM = R"HTML(
       marks.textContent = data.speedMarks;
       markNow.textContent = data.speedMarkNow ? 'Oui' : 'Non';
       ultrason.textContent = data.usDistance > 0 && data.usDistance < 999 ? `${data.usDistance} cm` : '-- cm';
+      barrier.textContent = data.usStop ? (data.barrierSeen ? (data.barrierLostCount >= 5 ? 'Tombee' : 'Vue') : 'Attente') : 'Non';
       battery.textContent = `${Number(data.batteryV).toFixed(2)} V (${data.batteryPct}%)`;
     }
 
@@ -1546,6 +1563,13 @@ int mesurerDistanceUltrasonCm()
   return (int)(duree / 58);
 }
 
+void resetBarriereUltrason()
+{
+  barriereDetecteeUltrason = false;
+  confirmationsUltrason = 0;
+  confirmationsBarriereTombee = 0;
+}
+
 void mettreAJourUltrason()
 {
   if (millis() - derniereMesureUltrasonMs < PERIODE_ULTRASON_MS) {
@@ -1558,12 +1582,36 @@ void mettreAJourUltrason()
   bool obstacleProche = distanceUltrasonCm > 0 &&
                         distanceUltrasonCm <= distanceStopCm;
 
-  if (stopUltrasonActif && robotActif && obstacleProche) {
+  if (!stopUltrasonActif) {
+    resetBarriereUltrason();
+    return;
+  }
+  if (!robotActif) {
+    return;
+  }
+
+  if (!barriereDetecteeUltrason && obstacleProche) {
     if (confirmationsUltrason < CONFIRMATIONS_STOP_ULTRASON) {
       confirmationsUltrason++;
     }
-  } else {
+    if (confirmationsUltrason >= CONFIRMATIONS_STOP_ULTRASON) {
+      barriereDetecteeUltrason = true;
+      confirmationsBarriereTombee = 0;
+    }
+    return;
+  }
+
+  if (!barriereDetecteeUltrason) {
     confirmationsUltrason = 0;
+    return;
+  }
+
+  if (obstacleProche) {
+    confirmationsBarriereTombee = 0;
+  } else {
+    if (confirmationsBarriereTombee < CONFIRMATIONS_BARRIERE_TOMBEE) {
+      confirmationsBarriereTombee++;
+    }
   }
 }
 
@@ -1732,6 +1780,10 @@ void envoyerEtat()
   json += distanceStopCm;
   json += ",\"usDistance\":";
   json += distanceUltrasonCm;
+  json += ",\"barrierSeen\":";
+  json += barriereDetecteeUltrason ? "true" : "false";
+  json += ",\"barrierLostCount\":";
+  json += confirmationsBarriereTombee;
   json += ",\"batteryV\":";
   json += String(tensionBatterie, 2);
   json += ",\"batteryPct\":";
@@ -1811,9 +1863,13 @@ void appliquerReglagesDepuisWeb()
   }
   if (serveur.hasArg("us")) {
     stopUltrasonActif = serveur.arg("us").toInt() == 1;
+    if (!stopUltrasonActif) {
+      resetBarriereUltrason();
+    }
   }
   if (serveur.hasArg("usDist")) {
     distanceStopCm = constrain(serveur.arg("usDist").toInt(), 5, 40);
+    resetBarriereUltrason();
   }
   if (serveur.hasArg("inter")) {
     modeIntersections = serveur.arg("inter").toInt() == 1;
@@ -1880,6 +1936,16 @@ void configurerInterfaceWeb()
     if (serveur.hasArg("fast")) {
       vitesseRapide = constrain(serveur.arg("fast").toInt(), 0, VITESSE_MAX);
     }
+    if (serveur.hasArg("us")) {
+      stopUltrasonActif = serveur.arg("us").toInt() == 1;
+      if (!stopUltrasonActif) {
+        resetBarriereUltrason();
+      }
+    }
+    if (serveur.hasArg("usDist")) {
+      distanceStopCm = constrain(serveur.arg("usDist").toInt(), 5, 40);
+      resetBarriereUltrason();
+    }
     resetVariationVitesse();
     sauvegarderReglages();
     serveur.send(200, "text/plain", "OK");
@@ -1887,6 +1953,7 @@ void configurerInterfaceWeb()
 
   serveur.on("/startSpeedMode", []() {
     resetVariationVitesse();
+    resetBarriereUltrason();
     robotActif = true;
     envoyerEtat();
   });
@@ -1910,7 +1977,11 @@ void configurerInterfaceWeb()
     if (!etaitActif && robotActif && modeParcoursAvance) {
       resetParcours();
     }
+    if (!etaitActif && robotActif) {
+      resetBarriereUltrason();
+    }
     if (!robotActif) {
+      resetBarriereUltrason();
       arreterMoteurs();
     }
     envoyerEtat();
@@ -1918,6 +1989,7 @@ void configurerInterfaceWeb()
 
   serveur.on("/stop", []() {
     robotActif = false;
+    resetBarriereUltrason();
     arreterMoteurs();
     envoyerEtat();
   });
