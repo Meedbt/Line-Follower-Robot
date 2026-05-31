@@ -2092,7 +2092,8 @@ void loop()
     return;
   }
 
-  if (stopUltrasonActif && confirmationsUltrason >= CONFIRMATIONS_STOP_ULTRASON) {
+  if (stopUltrasonActif && barriereDetecteeUltrason &&
+      confirmationsBarriereTombee >= CONFIRMATIONS_BARRIERE_TOMBEE) {
     robotActif = false;
     arreterMoteurs();
     return;
