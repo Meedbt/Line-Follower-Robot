@@ -75,6 +75,7 @@ bool marqueurDejaCompte = false;
 bool marqueurGaucheActif = false;
 bool marqueurDroiteActif = false;
 bool stopUltrasonActif = false;
+bool barriereDetecteeUltrason = false;
 bool modeIntersections = false;
 bool intersectionDetectee = false;
 bool intersectionDejaComptee = false;
@@ -109,12 +110,14 @@ uint32_t debutActionIntersectionMs = 0;
 uint32_t debutDemiTourMs = 0;
 uint32_t debutPauseParkingMs = 0;
 uint8_t confirmationsUltrason = 0;
+uint8_t confirmationsBarriereTombee = 0;
 
 const uint16_t SEUIL_MARQUEUR = 650;
 const uint16_t SEUIL_CENTRE_LIGNE = 180;
 const uint8_t NB_CAPTEURS_NOIRS_INTERSECTION = 5;
 const uint16_t DELAI_ANTI_DOUBLE_MS = 250;
 const uint8_t CONFIRMATIONS_STOP_ULTRASON = 3;
+const uint8_t CONFIRMATIONS_BARRIERE_TOMBEE = 5;
 const uint16_t PERIODE_ULTRASON_MS = 60;
 const uint16_t PERIODE_BATTERIE_MS = 500;
 const uint16_t SEUIL_INTERSECTION = 650;
@@ -369,11 +372,11 @@ const char PAGE_WEB[] PROGMEM = R"HTML(
           <input id="target" type="range" min="1" max="30" step="1" value="3" oninput="majReglages()">
         </label>
         <label>
-          <div class="row"><span>Stop ultrason</span><output id="usOut">Non</output></div>
+          <div class="row"><span>Arrivee ultrason</span><output id="usOut">Non</output></div>
           <input id="us" type="range" min="0" max="1" step="1" value="0" oninput="majReglages()">
         </label>
         <label>
-          <div class="row"><span>Distance stop</span><output id="usDistOut">15 cm</output></div>
+          <div class="row"><span>Distance detection barriere</span><output id="usDistOut">15 cm</output></div>
           <input id="usDist" type="range" min="5" max="40" step="1" value="15" oninput="majReglages()">
         </label>
         <label>
@@ -437,7 +440,7 @@ const char PAGE_WEB[] PROGMEM = R"HTML(
           <div class="metric">Marqueur gauche<strong id="mg">Non</strong></div>
           <div class="metric">Marqueur droit<strong id="md">Non</strong></div>
           <div class="metric">Ultrason<strong id="usNow">-- cm</strong></div>
-          <div class="metric">Stop ultrason<strong id="usState">Non</strong></div>
+          <div class="metric">Barriere<strong id="usState">Non</strong></div>
           <div class="metric">Batterie<strong id="batVolt">-- V</strong></div>
           <div class="metric">Charge<strong id="batPct">-- %</strong></div>
           <div class="metric">Intersections<strong id="interCount">0</strong></div>
@@ -558,7 +561,7 @@ const char PAGE_WEB[] PROGMEM = R"HTML(
       mg.textContent = data.markLeft ? 'Oui' : 'Non';
       md.textContent = data.markRight ? 'Oui' : 'Non';
       usNow.textContent = data.usDistance > 0 && data.usDistance < 999 ? `${data.usDistance} cm` : '-- cm';
-      usState.textContent = data.usStop ? 'Oui' : 'Non';
+      usState.textContent = data.usStop ? (data.barrierSeen ? (data.barrierLostCount >= 5 ? 'Tombee' : 'Vue') : 'Attente') : 'Non';
       batVolt.textContent = `${Number(data.batteryV).toFixed(2)} V`;
       batPct.textContent = `${data.batteryPct} %`;
       interCount.textContent = data.interCount;
@@ -954,6 +957,13 @@ int mesurerDistanceUltrasonCm()
   return (int)(duree / 58);
 }
 
+void resetBarriereUltrason()
+{
+  barriereDetecteeUltrason = false;
+  confirmationsUltrason = 0;
+  confirmationsBarriereTombee = 0;
+}
+
 void mettreAJourUltrason()
 {
   if (millis() - derniereMesureUltrasonMs < PERIODE_ULTRASON_MS) {
@@ -966,12 +976,36 @@ void mettreAJourUltrason()
   bool obstacleProche = distanceUltrasonCm > 0 &&
                         distanceUltrasonCm <= distanceStopCm;
 
-  if (stopUltrasonActif && robotActif && obstacleProche) {
+  if (!stopUltrasonActif) {
+    resetBarriereUltrason();
+    return;
+  }
+  if (!robotActif) {
+    return;
+  }
+
+  if (!barriereDetecteeUltrason && obstacleProche) {
     if (confirmationsUltrason < CONFIRMATIONS_STOP_ULTRASON) {
       confirmationsUltrason++;
     }
-  } else {
+    if (confirmationsUltrason >= CONFIRMATIONS_STOP_ULTRASON) {
+      barriereDetecteeUltrason = true;
+      confirmationsBarriereTombee = 0;
+    }
+    return;
+  }
+
+  if (!barriereDetecteeUltrason) {
     confirmationsUltrason = 0;
+    return;
+  }
+
+  if (obstacleProche) {
+    confirmationsBarriereTombee = 0;
+  } else {
+    if (confirmationsBarriereTombee < CONFIRMATIONS_BARRIERE_TOMBEE) {
+      confirmationsBarriereTombee++;
+    }
   }
 }
 
@@ -1109,6 +1143,10 @@ void envoyerEtat()
   json += distanceStopCm;
   json += ",\"usDistance\":";
   json += distanceUltrasonCm;
+  json += ",\"barrierSeen\":";
+  json += barriereDetecteeUltrason ? "true" : "false";
+  json += ",\"barrierLostCount\":";
+  json += confirmationsBarriereTombee;
   json += ",\"batteryV\":";
   json += String(tensionBatterie, 2);
   json += ",\"batteryPct\":";
@@ -1188,9 +1226,13 @@ void appliquerReglagesDepuisWeb()
   }
   if (serveur.hasArg("us")) {
     stopUltrasonActif = serveur.arg("us").toInt() == 1;
+    if (!stopUltrasonActif) {
+      resetBarriereUltrason();
+    }
   }
   if (serveur.hasArg("usDist")) {
     distanceStopCm = constrain(serveur.arg("usDist").toInt(), 5, 40);
+    resetBarriereUltrason();
   }
   if (serveur.hasArg("inter")) {
     modeIntersections = serveur.arg("inter").toInt() == 1;
@@ -1257,7 +1299,11 @@ void configurerInterfaceWeb()
     if (!etaitActif && robotActif && modeParcoursAvance) {
       resetParcours();
     }
+    if (!etaitActif && robotActif) {
+      resetBarriereUltrason();
+    }
     if (!robotActif) {
+      resetBarriereUltrason();
       arreterMoteurs();
     }
     envoyerEtat();
@@ -1265,6 +1311,7 @@ void configurerInterfaceWeb()
 
   serveur.on("/stop", []() {
     robotActif = false;
+    resetBarriereUltrason();
     arreterMoteurs();
     envoyerEtat();
   });
@@ -1368,7 +1415,8 @@ void loop()
     return;
   }
 
-  if (stopUltrasonActif && confirmationsUltrason >= CONFIRMATIONS_STOP_ULTRASON) {
+  if (stopUltrasonActif && barriereDetecteeUltrason &&
+      confirmationsBarriereTombee >= CONFIRMATIONS_BARRIERE_TOMBEE) {
     robotActif = false;
     arreterMoteurs();
     return;
