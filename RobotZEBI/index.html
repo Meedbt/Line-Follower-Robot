@@ -1,0 +1,96 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Robot Z.E.B.I - Accueil</title>
+  <link rel="stylesheet" href="assets/style.css">
+</head>
+<body data-page="index">
+  <header class="site-header">
+    <nav class="nav">
+      <a class="brand" href="index.html"><span class="brand-mark">Z</span><span>Robot Z.E.B.I</span></a>
+      <div class="nav-links">
+        <a href="index.html">Accueil</a>
+        <a href="equipe.html">Equipe</a>
+        <a href="robot.html">Robot</a>
+        <a href="epreuves.html">Epreuves</a>
+        <a href="programmation.html">Programmation</a>
+        <a href="programmes.html">Programmes</a>
+        <a href="videos.html">Videos</a>
+      </div>
+    </nav>
+  </header>
+
+  <main class="container">
+    <section class="hero">
+      <div>
+        <div class="eyebrow">Projet robotique BUT 1 GEII</div>
+        <h1>Robot suiveur de ligne ESP32</h1>
+        <p class="lead">Un robot autonome capable de suivre une piste, detecter des marqueurs, gerer des intersections, adapter sa vitesse et pousser une barriere d'arrivee.</p>
+        <div class="hero-actions">
+          <a class="button" href="robot.html">Voir le robot</a>
+          <a class="button secondary" href="epreuves.html">Explorer les epreuves</a>
+        </div>
+      </div>
+      <aside class="robot-panel">
+        <img class="media-img" src="" alt="Photo du robot suiveur de ligne">
+        <div class="panel-stats">
+          <div class="stat"><strong>8</strong><span>capteurs QTR</span></div>
+          <div class="stat"><strong>ESP32</strong><span>controle et Wi-Fi</span></div>
+          <div class="stat"><strong>31</strong><span>challenges vises</span></div>
+        </div>
+      </aside>
+    </section>
+
+    <section class="section">
+      <div class="section-header">
+        <div>
+          <div class="eyebrow">Vue d'ensemble</div>
+          <h2>Ce que le robot sait faire</h2>
+        </div>
+        <p>Le projet a evolue par versions pour repondre aux differents challenges : suivi simple, intersections, variations de vitesse, pauses aux marqueurs et gestion de la barriere.</p>
+      </div>
+      <div class="grid">
+        <article class="card">
+          <h3>Suivi de ligne</h3>
+          <p>Le capteur QTR-8RC mesure la position de la ligne noire. Le programme calcule l'erreur par rapport au centre et corrige les moteurs.</p>
+        </article>
+        <article class="card">
+          <h3>Interface web</h3>
+          <p>L'ESP32 cree son propre reseau Wi-Fi. Depuis un telephone, on peut regler la vitesse, le PID, les modes mission et suivre la telemetrie.</p>
+        </article>
+        <article class="card">
+          <h3>Barriere</h3>
+          <p>Le capteur ultrason detecte la barriere, le robot continue a pousser, puis il s'arrete quand la barriere n'est plus detectee.</p>
+        </article>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="grid">
+        <article class="card wide">
+          <h2>Objectif du site</h2>
+          <p>Presenter le travail de l'equipe, expliquer le fonctionnement technique du robot, montrer les epreuves realisees et donner acces aux programmes utilises.</p>
+          <div class="tag-list">
+            <span class="tag">Suivi de ligne</span>
+            <span class="tag">ESP32</span>
+            <span class="tag">PID</span>
+            <span class="tag">QTR-8RC</span>
+            <span class="tag">Interface web</span>
+          </div>
+        </article>
+        <article class="card">
+          <h3>Etat actuel</h3>
+          <p>Les challenges jusqu'a 31 sont etudies, avec une attention particuliere au challenge 29 et aux trajectoires complexes.</p>
+        </article>
+      </div>
+    </section>
+  </main>
+
+  <footer class="footer">
+    <div class="container">Robot Z.E.B.I - Projet robotique BUT 1 GEII Cachan 2025</div>
+  </footer>
+  <script src="assets/script.js"></script>
+</body>
+</html>

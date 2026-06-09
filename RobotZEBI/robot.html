@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Robot Z.E.B.I - Robot</title>
+  <link rel="stylesheet" href="assets/style.css">
+</head>
+<body data-page="robot">
+  <header class="site-header">
+    <nav class="nav">
+      <a class="brand" href="index.html"><span class="brand-mark">Z</span><span>Robot Z.E.B.I</span></a>
+      <div class="nav-links">
+        <a href="index.html">Accueil</a><a href="equipe.html">Equipe</a><a href="robot.html">Robot</a><a href="epreuves.html">Epreuves</a><a href="programmation.html">Programmation</a><a href="programmes.html">Programmes</a><a href="videos.html">Videos</a>
+      </div>
+    </nav>
+  </header>
+  <main class="container">
+    <section class="page-title">
+      <div class="eyebrow">Presentation du robot</div>
+      <h1>Architecture materielle</h1>
+      <p class="lead">Le robot repose sur une carte ESP32, un capteur QTR-8RC, un pont en H L298N, deux moteurs DC, une batterie NiMH 7,2 V et un capteur ultrason.</p>
+    </section>
+
+    <section class="section">
+      <div class="grid">
+        <article class="card wide">
+          <h2>Composants principaux</h2>
+          <table class="table">
+            <thead><tr><th>Element</th><th>Role</th></tr></thead>
+            <tbody>
+              <tr><td>ESP32</td><td>Lit les capteurs, calcule la correction, pilote les moteurs et heberge l'interface web.</td></tr>
+              <tr><td>QTR-8RC</td><td>Detecte la position de la ligne avec huit capteurs alignes.</td></tr>
+              <tr><td>L298N</td><td>Commande la vitesse et le sens des deux moteurs DC.</td></tr>
+              <tr><td>HC-SR04</td><td>Detecte la barriere d'arrivee et permet d'arreter le robot apres sa chute.</td></tr>
+              <tr><td>Batterie NiMH 7,2 V</td><td>Alimente les moteurs et l'electronique avec une masse commune.</td></tr>
+            </tbody>
+          </table>
+        </article>
+        <article class="card">
+          <h3>Photo du robot</h3>
+          <img class="media-img" src="assets/robot.jpg" alt="Photo du robot Z.E.B.I">
+        </article>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="section-header">
+        <div>
+          <div class="eyebrow">Fonctions embarquees</div>
+          <h2>Un robot reglable en direct</h2>
+        </div>
+        <p>L'interface embarquee permet de modifier les parametres sans reteleverser le programme a chaque test.</p>
+      </div>
+      <div class="grid">
+        <article class="card">
+          <h3>Reglage PID</h3>
+          <p>Les coefficients <code>KP</code> et <code>KD</code> ajustent la reactivite et la stabilite du robot.</p>
+        </article>
+        <article class="card">
+          <h3>Telemetrie</h3>
+          <p>L'interface affiche la position de ligne, les valeurs capteurs, la batterie, l'ultrason et l'etat des missions.</p>
+        </article>
+        <article class="card">
+          <h3>Modes mission</h3>
+          <p>Selon les epreuves, le robot active des modes differents : vitesse variable, pause marqueur, parcours avance ou arrivee ultrason.</p>
+        </article>
+      </div>
+    </section>
+  </main>
+  <footer class="footer"><div class="container">Robot Z.E.B.I - Robot</div></footer>
+  <script src="assets/script.js"></script>
+</body>
+</html>

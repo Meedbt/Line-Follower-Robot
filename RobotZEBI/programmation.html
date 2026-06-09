@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Robot Z.E.B.I - Programmation</title>
+  <link rel="stylesheet" href="assets/style.css">
+</head>
+<body data-page="programmation">
+  <header class="site-header">
+    <nav class="nav">
+      <a class="brand" href="index.html"><span class="brand-mark">Z</span><span>Robot Z.E.B.I</span></a>
+      <div class="nav-links">
+        <a href="index.html">Accueil</a><a href="equipe.html">Equipe</a><a href="robot.html">Robot</a><a href="epreuves.html">Epreuves</a><a href="programmation.html">Programmation</a><a href="programmes.html">Programmes</a><a href="videos.html">Videos</a>
+      </div>
+    </nav>
+  </header>
+  <main class="container">
+    <section class="page-title">
+      <div class="eyebrow">Explication de la programmation</div>
+      <h1>Du capteur aux moteurs</h1>
+      <p class="lead">Le programme transforme les valeurs des capteurs en correction moteur, puis ajoute des comportements specifiques pour chaque challenge.</p>
+    </section>
+
+    <section class="section">
+      <div class="grid">
+        <article class="card">
+          <h3>1. Lecture QTR</h3>
+          <p>La fonction <code>readLineBlack()</code> donne une position entre 0 et 7000. La valeur 3500 correspond au centre du robot.</p>
+        </article>
+        <article class="card">
+          <h3>2. Correction PID</h3>
+          <p>L'erreur est calculee par rapport au centre. <code>KP</code> corrige l'ecart et <code>KD</code> limite les oscillations.</p>
+        </article>
+        <article class="card">
+          <h3>3. Pilotage moteurs</h3>
+          <p>Le L298N recoit deux vitesses PWM : une pour le moteur gauche et une pour le moteur droit.</p>
+        </article>
+        <article class="card">
+          <h3>4. Marqueurs</h3>
+          <p>Les capteurs extremes detectent les tirets lateraux, utilises pour compter les etapes, changer de vitesse ou declencher une pause.</p>
+        </article>
+        <article class="card">
+          <h3>5. Intersections</h3>
+          <p>Une intersection est detectee lorsque plusieurs capteurs voient du noir en meme temps. Le robot peut alors suivre une sequence de directions.</p>
+        </article>
+        <article class="card">
+          <h3>6. Ultrason</h3>
+          <p>Le capteur detecte la barriere. Le robot pousse, puis il s'arrete quand la barriere n'est plus devant lui.</p>
+        </article>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="grid">
+        <article class="card wide">
+          <h2>Principe du suivi</h2>
+          <pre class="code-block"><code>position = qtr.readLineBlack(capteurs)
+erreur = position - 3500
+correction = KP * erreur + KD * variation
+vitesseGauche = vitesseBase + correction
+vitesseDroite = vitesseBase - correction</code></pre>
+        </article>
+        <article class="card">
+          <h3>Interface ESP32</h3>
+          <p>L'ESP32 fonctionne en point d'acces Wi-Fi. La page web permet de regler le robot pendant les essais sans brancher l'ordinateur.</p>
+          <img class="media-img" src="assets/interfaceweb.jpg" alt="Capture de l'interface web du robot" style="margin-top: 12px;">
+        </article>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="timeline">
+        <div class="timeline-item"><strong>Version de base</strong><p>Suivi de ligne avec PID et moteurs L298N.</p></div>
+        <div class="timeline-item"><strong>Interface web</strong><p>Ajout des reglages en temps reel et de la telemetrie.</p></div>
+        <div class="timeline-item"><strong>Missions avancees</strong><p>Gestion des intersections, marqueurs, variation de vitesse et arrivee par ultrason.</p></div>
+      </div>
+    </section>
+  </main>
+  <footer class="footer"><div class="container">Robot Z.E.B.I - Programmation</div></footer>
+  <script src="assets/script.js"></script>
+</body>
+</html>
